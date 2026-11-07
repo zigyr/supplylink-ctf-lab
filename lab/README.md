@@ -60,7 +60,7 @@
 ```bash
 sudo bash lab/start_lab.sh    # 启动（会临时切换系统 DNS）
 
-python3 lab/attack.py                                              # 任务1：读 /var/flag.txt
+python3 lab/attack.py                                                     # 任务1：读 /var/flag.txt
 python3 lab/attack.py "....//....//....//opt/supplylink/config/jwt.key"   # 任务2：偷 JWT 密钥
 
 sudo bash lab/stop_lab.sh     # 关闭并恢复系统 DNS

@@ -2,6 +2,13 @@
 
 > 源码来自 **第四届"数信杯"网络安全大赛 团队线下赛** 的一道实操题（附件 `www.zip`，一套 PHP 供应链协同平台）。本仓库额外提供本地复现实验环境，可完整打通题目的 SSRF 攻击链。
 
+## 目录结构
+
+```
+├── source/   # www.zip 原始题目源码（public/ internal/ src/ scripts/ dns/）
+└── lab/      # 本地复现：启动/停止脚本、攻击脚本、单步调试工具、实验指南
+```
+
 ## 一句话概括
 
 基于 TOCTOU 的 SSRF：**check**（校验 URL 时域名解析成公网 IP，顺利放行）与 **use**（实际抓取时同一域名解析成 `127.0.0.1`）之间存在时间差，两次 DNS 解析结果不同——校验看的是"门口"，攻击打的是"屋里"。再借 302 跳转后不重验、`....//` 绕过目录穿越，最终让服务器自己 `include` 任意文件并以 zip 归档回传。
@@ -26,27 +33,65 @@ http://127.0.0.1:8081/debug/preview.php
 
 ## 它是怎么一步步"逃离"限制的（与源码逐条对应）
 
-| # | 代码位置 | 表面上的限制 | Payload 的绕过方式 |
-|---|---------|-------------|-------------------|
-| 1 | `public/index.php:31-40` | `source_url` 经过 `is_ssrf_safe_url()` 校验 | 提交 rebinding 子域名，校验时它解析成公网 IP，顺利放行 |
-| 2 | `src/import_service.php` `is_blocked_ip()` | `dns_get_record` 拿到 A 记录后按黑名单拦截内网 IP | DNS 服务器由题目方控制（`dns/rebind_dns.py`），同一域名轮流返回公网 IP / `127.0.0.1`，校验那一下恰好是公网 IP |
-| 3 | `src/import_service.php` `fetch_remote_document()` | —（防线漏洞）`follow_location => 1`，跟随 302 后**不再重新校验** | 校验只发生在最初那个 URL 上；302 之后去哪，没人再管 |
-| 4 | `public/jump.php` | 只对 `target` 做"非空 + 含点号"的弱校验，随后直接 `header('Location: ...')` | 开放重定向：让它把请求转向 `127.0.0.1:8081`。注意——跟随 302 的是**服务器的 `file_get_contents`**，不是浏览器，所以 `preview.php` 看到的 `REMOTE_ADDR` 就是服务器自己的 `127.0.0.1` |
-| 5 | `internal/preview.php` `is_internal_request()` | 仅允许 `127.0.0.1` 访问 | 请求由服务器本机发起，天然满足 |
-| 6 | `internal/preview.php` `normalize_relative_path()` | `str_replace(['..'], '', ...)` 过滤 `..` | **单遍**替换：`....//` 被删掉中间的 `..` 后，两侧的 `.` 和 `/` 拼出新的 `../`，目录穿越复活 |
-| 7 | `internal/preview.php` | `include $target` + `archive_and_stream()` | 目标文件被 zip 打包后流式回传，`file_get_contents` 把归档内容当成"导入结果"带回——攻击者拿到的就是内部文件本体 |
+```mermaid
+flowchart TD
+    A["客户端访问 jump.php<br/>*.cache.rebind.huanyutech.cn:8080"]
+    B["jump.php 获取 GET 参数 url"]
+    C["trim() 去除首尾空白"]
+    D["parse_url() 解析 URL"]
+    E{"URL 是否合法？<br/>scheme 为 http / https"}
+    F["返回 400<br/>invalid redirect target"]
+    G["header(Location: url, 302)"]
+    H["浏览器收到 302 响应"]
+    I["浏览器根据 Location<br/>发起第二次 HTTP 请求"]
+    J["访问 127.0.0.1:8081<br/>/debug/preview.php"]
 
-一句话：**校验管"入口 URL"，跳转管"实际目的地"，两个角色各信一半，中间的缝就是漏洞。**
+    K["preview.php 获取 REMOTE_ADDR"]
+    L{"REMOTE_ADDR 是否为<br/>127.0.0.1 或 ::1？"}
+    M["返回 403<br/>拒绝访问"]
+    N["通过 IP 白名单检查"]
+
+    O["获取 GET 参数 file"]
+    P{"file 是否为空？"}
+    Q["返回 400<br/>missing file parameter"]
+    R["str_replace('../', '', file)"]
+    S["利用 ....// 绕过过滤<br/>生成 ../../../opt/..."]
+    T["拼接基础目录与处理后的路径<br/>/var/cache/archive/../../../opt/..."]
+    U["is_file() 检查目标是否为普通文件"]
+    V["返回 404<br/>preview target not found"]
+    W["include $target"]
+    X["PHP 引擎解析被包含文件"]
+    Y["普通文本内容直接输出"]
+    Z["PHP 标签内的代码被执行"]
+    AA["响应中可能泄露 jwt.key 内容"]
+
+    A --> B --> C --> D --> E
+    E -- 否 --> F
+    E -- 是 --> G --> H --> I --> J
+    J --> K --> L
+    L -- 否 --> M
+    L -- 是 --> N --> O --> P
+    P -- 是 --> Q
+    P -- 否 --> R --> S --> T --> U
+    U -- 不存在或不是普通文件 --> V
+    U -- 存在 --> W --> X
+    X --> Y
+    X --> Z
+    Y --> AA
+
+    classDef danger fill:#ffe3e3,stroke:#d33,color:#900
+    classDef process fill:#e8f0ff,stroke:#4676c8,color:#173b70
+    classDef success fill:#e4f5e9,stroke:#31945b,color:#14532d
+    class F,M,Q,V danger
+    class G,I,R,S,T,W,X process
+    class N,AA success
+```
+
+
 
 ## 本地复现
 
 仓库自带一键实验环境（Linux / macOS），clone 下来 `sudo bash lab/start_lab.sh` 即可开打，完整玩法、单步追踪、排错口诀见 [lab/README.md](lab/README.md)。
 
-## 目录结构
-
-```
-├── source/   # www.zip 原始题目源码（public/ internal/ src/ scripts/ dns/）
-└── lab/      # 本地复现：启动/停止脚本、攻击脚本、单步调试工具、实验指南
-```
 
 > 仅供学习与研究，请勿用于真实目标。
