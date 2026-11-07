@@ -1,0 +1,5 @@
+Archive Preview Service v0.9.3
+internal use only - supplylink ops
+
+GET /debug/preview.php?file=<name>
+files are served from /var/cache/archive/
