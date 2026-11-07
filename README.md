@@ -38,18 +38,9 @@ http://127.0.0.1:8081/debug/preview.php
 
 一句话：**校验管"入口 URL"，跳转管"实际目的地"，两个角色各信一半，中间的缝就是漏洞。**
 
-## 本地复现（Linux / macOS）
+## 本地复现
 
-```bash
-git clone https://github.com/zigyr/supplylink-ctf-lab.git
-cd supplylink-ctf-lab
-sudo bash lab/start_lab.sh      # 部署站点 + 本地 DNS 劫持 + 启动 3 个 PHP 服务
-python3 lab/attack.py           # 任务一：读取 /var/flag.txt
-python3 lab/attack.py "....//....//....//opt/supplylink/config/jwt.key"   # 任务二：读 JWT 密钥
-sudo bash lab/stop_lab.sh       # 收工：停服务、恢复 DNS、清理 /opt /var/flag
-```
-
-更多细节见 `lab/README.md`。
+仓库自带一键实验环境（Linux / macOS），clone 下来 `sudo bash lab/start_lab.sh` 即可开打，完整玩法、单步追踪、排错口诀见 [lab/README.md](lab/README.md)。
 
 ## 目录结构
 

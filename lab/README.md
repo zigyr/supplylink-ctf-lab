@@ -6,13 +6,6 @@
 
 ---
 
-## 〇、依赖安装
-
-| 系统 | 命令 |
-|---|---|
-| Ubuntu / Debian / Kali | `sudo apt install php-cli php-sqlite3 python3` |
-| macOS | `brew install php python3` |
-
 ## 一、环境里有什么
 
 ```
