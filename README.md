@@ -57,6 +57,6 @@ http://<任意的字符串_p>.cache.rebind.huanyutech.cn:8080/jump.php?url=http%
 
 ## 具体详情解读
 
-请参考 `https://zigyr.github.io/20261108/一次www.zip的源码审计/从%20URL%20提交框出发，看看%20Payload%20是如何抵达目标文件的/`
+请参考：https://zigyr.github.io/20261108/%E4%B8%80%E6%AC%A1www.zip%E7%9A%84%E6%BA%90%E7%A0%81%E5%AE%A1%E8%AE%A1/%E4%BB%8E%2520URL%2520%E6%8F%90%E4%BA%A4%E6%A1%86%E5%87%BA%E5%8F%91%EF%BC%8C%E7%9C%8B%E7%9C%8B%2520Payload%2520%E6%98%AF%E5%A6%82%E4%BD%95%E6%8A%B5%E8%BE%BE%E7%9B%AE%E6%A0%87%E6%96%87%E4%BB%B6%E7%9A%84/
 
 > 仅供学习与研究，请勿用于真实目标。
