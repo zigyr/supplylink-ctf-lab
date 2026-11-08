@@ -5,13 +5,49 @@
 ## 目录结构
 
 ```
-├── source/   # www.zip 原始题目源码（public/ internal/ src/ scripts/ dns/）
-└── lab/      # 本地复现：启动/停止脚本、攻击脚本、单步调试工具、实验指南
+├── source/              # www.zip 原始题目源码（public/ internal/ src/ scripts/ dns/）
+├── lab/                 # 选手侧工具：攻击脚本、单步追踪器、原生启停脚本、实验指南
+├── Dockerfile + docker/ # Docker 单容器封装（推荐玩法，见下）
+└── .github/workflows/   # CI：自动构建、冒烟测试、发布镜像到 GHCR
 ```
 
 ## 一句话概括
 
 基于 TOCTOU 的 SSRF：**check**（校验 URL 时域名解析成公网 IP，顺利放行）与 **use**（实际抓取时同一域名解析成 `127.0.0.1`）之间存在时间差，两次 DNS 解析结果不同——校验看的是"门口"，攻击打的是"屋里"。再借 302 跳转后不重验、`....//` 绕过目录穿越，最终让服务器自己 `include` 任意文件并以 zip 归档回传。
+
+## 本地复现
+
+### 方式一：Docker（推荐，一行命令开打）
+
+单容器封装了全部 4 个组件（rebinding DNS + 门户 A/B + 内网预览服务），DNS Rebinding 完全发生在容器内部——**不需要 sudo、不改宿主机 DNS、不留"断网"后遗症**，Windows / macOS / Linux 通吃。
+
+不 clone 仓库、直接拉预构建镜像（GitHub Actions 自动发布到 GHCR）：
+
+```bash
+docker run --rm -p 8000:8000 ghcr.io/zigyr/supplylink-ctf-lab:latest
+```
+
+或 clone 后自己构建：
+
+```bash
+docker build -t supplylink-ctf-lab .
+docker run --rm -p 8000:8000 supplylink-ctf-lab
+```
+
+容器启动后会自动完成数据库初始化、flag 投放和 rebinding 自检，看到 `✅ rebinding 工作正常` 即可开打（手动做题直接浏览器开 `http://127.0.0.1:8000`，账号 supplier_demo / Huanyu2026!）：
+
+```bash
+# 任务 1：读 /var/flag.txt
+python3 lab/attack.py
+# 任务 2：偷 /opt/supplylink/config/jwt.key
+python3 lab/attack.py "....//....//....//opt/supplylink/config/jwt.key"
+```
+
+想换 flag：`docker run --rm -p 8000:8000 -e FLAG='flag{your_own}' ghcr.io/zigyr/supplylink-ctf-lab:latest`（`JWT_KEY` 同理）。也可以 `docker compose up`（非必需，根目录 Dockerfile 单容器即可完整运行）。
+
+### 方式二：原生脚本（适合逐行调试源码）
+
+仓库自带一键实验环境（Linux / macOS），clone 下来 `sudo bash lab/start_lab.sh` 即可开打，完整玩法、单步追踪、排错口诀见 [lab/README.md](lab/README.md)。
 
 ## 关键 Payload
 
@@ -86,40 +122,5 @@ flowchart TD
     class G,I,R,S,T,W,X process
     class N,AA success
 ```
-
-
-
-## 本地复现
-
-### 方式一：Docker（推荐，一行命令开打）
-
-单容器封装了全部 4 个组件（rebinding DNS + 门户 A/B + 内网预览服务），DNS Rebinding 完全发生在容器内部——**不需要 sudo、不改宿主机 DNS、不留"断网"后遗症**，Windows / macOS / Linux 通吃：
-
-```bash
-docker build -t supplylink-ctf-lab .
-docker run --rm -p 8000:8000 supplylink-ctf-lab
-```
-
-或使用预构建镜像（GitHub Actions 自动发布到 GHCR，连 clone 都不用）：
-
-```bash
-docker run --rm -p 8000:8000 ghcr.io/zigyr/supplylink-ctf-lab:latest
-```
-
-容器启动后会自动完成数据库初始化、flag 投放和 rebinding 自检，看到 `✅ rebinding 工作正常` 即可开打：
-
-```bash
-# 任务 1：读 /var/flag.txt
-python3 lab/attack.py
-# 任务 2：偷 /opt/supplylink/config/jwt.key
-python3 lab/attack.py "....//....//....//opt/supplylink/config/jwt.key"
-```
-
-想换 flag：`docker run --rm -p 8000:8000 -e FLAG='flag{your_own}' supplylink-ctf-lab`（`JWT_KEY` 同理）。也可以 `docker compose up`（非必需，根目录 Dockerfile 单容器即可完整运行）。
-
-### 方式二：原生脚本（适合逐行调试源码）
-
-仓库自带一键实验环境（Linux / macOS），clone 下来 `sudo bash lab/start_lab.sh` 即可开打，完整玩法、单步追踪、排错口诀见 [lab/README.md](lab/README.md)。
-
 
 > 仅供学习与研究，请勿用于真实目标。
