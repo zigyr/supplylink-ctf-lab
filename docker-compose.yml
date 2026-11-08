@@ -1,0 +1,13 @@
+# 便捷方式（可选）：根目录 Dockerfile 单容器即可完整运行，本文件并非必需
+services:
+  supplylink:
+    build: .
+    image: supplylink-ctf-lab:latest
+    ports:
+      - "8000:8000"   # 门户 A：浏览器 / attack.py 入口
+      - "8080:8080"   # 门户 B：可选，调试用
+    environment:
+      # 想换 flag 直接改这里（或 docker run -e FLAG=...）
+      FLAG: "flag{ssrf_jump_rebind_1fi_cha1n_pwned}"
+      JWT_KEY: "flag{jwt_k3y_1s_n0t_s4fe_0n_d1sk}"
+    restart: unless-stopped

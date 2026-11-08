@@ -91,6 +91,34 @@ flowchart TD
 
 ## 本地复现
 
+### 方式一：Docker（推荐，一行命令开打）
+
+单容器封装了全部 4 个组件（rebinding DNS + 门户 A/B + 内网预览服务），DNS Rebinding 完全发生在容器内部——**不需要 sudo、不改宿主机 DNS、不留"断网"后遗症**，Windows / macOS / Linux 通吃：
+
+```bash
+docker build -t supplylink-ctf-lab .
+docker run --rm -p 8000:8000 supplylink-ctf-lab
+```
+
+或使用预构建镜像（GitHub Actions 自动发布到 GHCR，连 clone 都不用）：
+
+```bash
+docker run --rm -p 8000:8000 ghcr.io/zigyr/supplylink-ctf-lab:latest
+```
+
+容器启动后会自动完成数据库初始化、flag 投放和 rebinding 自检，看到 `✅ rebinding 工作正常` 即可开打：
+
+```bash
+# 任务 1：读 /var/flag.txt
+python3 lab/attack.py
+# 任务 2：偷 /opt/supplylink/config/jwt.key
+python3 lab/attack.py "....//....//....//opt/supplylink/config/jwt.key"
+```
+
+想换 flag：`docker run --rm -p 8000:8000 -e FLAG='flag{your_own}' supplylink-ctf-lab`（`JWT_KEY` 同理）。也可以 `docker compose up`（非必需，根目录 Dockerfile 单容器即可完整运行）。
+
+### 方式二：原生脚本（适合逐行调试源码）
+
 仓库自带一键实验环境（Linux / macOS），clone 下来 `sudo bash lab/start_lab.sh` 即可开打，完整玩法、单步追踪、排错口诀见 [lab/README.md](lab/README.md)。
 
 
