@@ -1,0 +1,121 @@
+它的定位
+
+作为up的第一篇代码审计的处女作，适合于零代码审计基础、基础入门php的师傅们
+
+所以，定位相对入门
+
+只根据 payload，去探究，它是如何一步步的实现目的的
+
+不涉及，其他无关的源码
+
+
+首先，这篇笔记，是对见识了 payload 是如何与服务器源码 `jump.php`、`preview.php` 出发碰撞反应后得到目标文件后，关于如何从import.php开始到jump.php，为什么是域名而不是127的IP等等更细节问题的发问
+
+
+
+import.php的提交框限制客户端直接提交127.0.0.1去触发SSRF
+源码：
+```
+import.php.16line
+->import_service.php.create_imported_attachment().224line
+->import_service.php.validate_import_url().157line
+->import_service.php.is_blocked_ip().62line
+->import_service.php.blocked_ipv4_ranges
+```
+
+
+所以，还是回来，继续研究重要的`import_service.php.create_imported_attachment()`
+
+假如输入的，`sourceUrl` 合法通过了`validate_import_url`的合理IP检测
+
+下一步碰到了 `fetch_remote_document`
+
+**从远程 URL 抓取文档内容**的函数，简单说就是"用 URL 下载东西"
+
+本来想着这个所谓下载，是访问服务器的临时DNS服务，去获得ip，但是看看后面的发现，不是这样
+
+从随后
+```php
+if ($result['body'] === '') {
+	throw new RuntimeException('导入内容为空，已拒绝归档。');
+}
+```
+可以知道，`fetch_remote_document` 的作用，就是去请求我们想要的那个资源
+
+(呃呃，好像从名字也能知道个一二了，不过看了 `fetch_remote_document` 后面的代码，可以知道，那是负责对读到的内容，进行浏览器渲染和跟新的，总的来说虽然很长，但是我们可以跳过了)
+
+所以，跟进 `fetch_remote_document` 
+
+
+奇怪了，那DNS在哪里那
+
+原来一次在 `validate_import_url` ，目的是检验 sourceUrl 是否合法
+
+第二次是在 `fetch_remote_document` 的 `file_get_contents` 中，系统函数自己去访问 url资源，自动出发 DNS
+
+但是，那就奇怪了，你直接去file_get_content的话，那也没看到从import.php输入的url到jump那
+
+看看 `file_get_contents` 拿到这个 URL(以payload：`http://<子域>.cache.rebind.huanyutech.cn:8080/jump.php?url=http%3A%2F%2F127.0.0.1%3A8081%2Fdebug%2Fpreview.php%3Ffile%3D....%2F%2F....%2F%2F....%2F%2Fopt%2Fsupplylink%2Fconfig%2Fjwt.key`为例) 后做了什么
+
+它内部先 `parse_url` 拆开
+
+| 部分           | 值                                                   |
+| ------------ | --------------------------------------------------- |
+| host         | `<子域>.cache.rebind.huanyutech.cn`                   |
+| port         | `8080`                                              |
+| path + query | `/jump.php?url=http%3A%2F%2F127.0.0.1%3A8081%2F...` |
+
+
+
+然后：解析 host 的 IP → TCP 连接该 IP 的 8080 端口 → 发出这样的 HTTP 请求：
+
+```http
+GET /jump.php?url=http%3A%2F%2F127.0.0.1%3A8081%2Fdebug%2Fpreview.php%3Ffile%3D.... HTTP/1.1
+Host: <子域>.cache.rebind.huanyutech.cn:8080
+User-Agent: SupplyLink-Archive/2.1
+```
+
+
+行，那这样也算是到了 `jump.php` 了
+
+也就是说，`file_get_content` 发起请求到达了 `jump.php`
+
+经过解析，`$target=http://127.0.0.1:8081/debug/preview.php?file=....//....//....//opt/supplylink/config/jwt.key`
+
+随后，通过 `header('Location: ' . $target, true, 302)` 到达了 `preview.php`
+
+在 `preview.php` 中，
+```php
+$clientIp = $_SERVER['REMOTE_ADDR'] ?? '';
+if (!in_array($clientIp, ['127.0.0.1', '::1'], true)) {
+    http_response_code(403);
+    header('Content-Type: text/plain; charset=UTF-8');
+    echo 'archive preview is restricted to the maintenance console';
+    exit;
+}
+```
+如果我们绕过了这个检测，那么接下来就是虎归平原的万里无阻了
+
+ssrf就成功了
+
+ `$_SERVER['REMOTE_ADDR']` 是什么
+
+简单来说，就是此次 HTTP 请求对应的客户端 IP 地址
+
+而接下来的 `!in_array($clientIp, ['127.0.0.1', '::1'], true)` 是只允许来自本机回环地址的请求访问
+
+那这不是巧了，想想，是谁发起的这次网络请求
+
+正是 `file_get_content`，也即服务端自己
+
+自己访问自己，没毛病，美美放行
+
+于是，我们基于这个逻辑，构造 payload 也就能美美 SSRF
+
+ouk，完结撒花
+
+> 有一点，这里的关于重定向次数，我不是很理解
+
+---
+
+补充（2026-11-08）：仓库已支持 Docker 一键分发——单容器封装 rebinding DNS + 门户 + 内网服务，不改宿主机 DNS、零残留，任何人 `docker run --rm -p 8000:8000 ghcr.io/zigyr/supplylink-ctf-lab:latest` 即可复现本文整条攻击链（镜像由 GitHub Actions 构建并冒烟测试后自动发布）。
